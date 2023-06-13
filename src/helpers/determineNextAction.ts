@@ -6,6 +6,7 @@ import {
 import { useAppState } from '../state/store';
 import { availableActions } from './availableActions';
 import { ParsedResponseSuccess } from './parseResponse';
+import { processDom } from './domPostProcessor';
 
 const formattedActions = availableActions
   .map((action, i) => {
@@ -23,14 +24,24 @@ You can use the following tools:
 
 ${formattedActions}
 
-You will be be given a task to perform and the current state of the DOM. You will also be given previous actions that you have taken. You may retry a failed action up to one time.
+You will be given a task to perform, along with the current state of the Document Object Model (DOM) represented as a JSON array. Additionally, you will also be informed about the previous actions that you have executed. In case an action fails, you are allowed to retry it once.
+
+The DOM state is represented by a JSON array where each array element denotes a DOM element. Every DOM element array consists of:
+
+1.The tag name as the first element.
+2.The ID of the DOM element as the second element (if it exists).
+3.The following elements in the array represent attribute values.
+4.The last element in the array is another array representing the children of the DOM element (if any exist).
 
 This is an example of an action:
 
 <Thought>I should click the add to cart button</Thought>
 <Action>click(223)</Action>
 
+You must provide only one action at a time.
+
 You must always include the <Thought> and <Action> open/close tags or else your response will be marked as invalid.`;
+
 
 export async function determineNextAction(
   taskInstructions: string,
@@ -40,6 +51,13 @@ export async function determineNextAction(
   notifyError?: (error: string) => void
 ) {
   const model = useAppState.getState().settings.selectedModel;
+
+
+  // const processedDom = processDom(simplifiedDOM);
+
+  // console.log(simplifiedDOM);
+  // console.log(processedDom);
+
   const prompt = formatPrompt(taskInstructions, previousActions, simplifiedDOM);
   const key = useAppState.getState().settings.openAIKey;
   if (!key) {
@@ -55,8 +73,10 @@ export async function determineNextAction(
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
+      console.log(prompt);
+
       const completion = await openai.createChatCompletion({
-        model: model,
+        model: "gpt-3.5-turbo-16k",
         messages: [
           {
             role: 'system',
@@ -69,6 +89,7 @@ export async function determineNextAction(
         stop: ['</Action>'],
       });
 
+      
       return {
         usage: completion.data.usage as CreateCompletionResponseUsage,
         prompt,

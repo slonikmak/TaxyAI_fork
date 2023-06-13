@@ -14,7 +14,8 @@ export type ParsedResponse =
 
 export function parseResponse(text: string): ParsedResponse {
   const thoughtMatch = text.match(/<Thought>(.*?)<\/Thought>/);
-  const actionMatch = text.match(/<Action>(.*?)<\/Action>/);
+  const actionMatch = text.match(/<Action>(.*?)<\/Action>/s);
+
 
   if (!thoughtMatch) {
     return {

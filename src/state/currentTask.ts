@@ -15,6 +15,7 @@ import templatize from '../helpers/shrinkHTML/templatize';
 import { getSimplifiedDom } from '../helpers/simplifyDom';
 import { sleep, truthyFilter } from '../helpers/utils';
 import { MyStateCreator } from './store';
+import { findSuitableTokens } from '../helpers/findSuitableTokens';
 
 export type TaskHistoryEntry = {
   prompt: string;
@@ -100,13 +101,17 @@ export const createCurrentTaskSlice: MyStateCreator<CurrentTaskSlice> = (
 
           if (wasStopped()) break;
           setActionStatus('transforming-dom');
-          const currentDom = templatize(html);
+          const result = templatize(html);
+          const currentDom = result[0];
 
           const previousActions = get()
             .currentTask.history.map((entry) => entry.action)
             .filter(truthyFilter);
 
           setActionStatus('performing-query');
+
+
+          const tokens = await findSuitableTokens(result[1], instructions);
 
           const query = await determineNextAction(
             instructions,

@@ -103,6 +103,7 @@ var options = {
     ],
   },
   resolve: {
+    fallback:  { "path": require.resolve("path-browserify") },
     alias: alias,
     extensions: fileExtensions
       .map((extension) => '.' + extension)

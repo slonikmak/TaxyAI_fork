@@ -1,3 +1,4 @@
+import _ from 'lodash';
 import { range } from 'lodash';
 
 type JsonNode =
@@ -269,14 +270,15 @@ function serializeTree(
   }`;
 }
 
-export default function templatize(html: string): string {
+export default function templatize(html: string): string[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const root = doc.documentElement;
 
   const possibleTemplates: Record<string, PossibleTemplate> = {};
 
   const tree = findPotentialTemplates(root, possibleTemplates);
-  if (!tree) return html;
+
+  if (!tree) return [html];
 
   const optimizedTemplates = Object.values(possibleTemplates).reduce(
     (acc, template) => {
@@ -292,6 +294,10 @@ export default function templatize(html: string): string {
   // Choose which templates to apply
   const chosenTemplates = chooseTemplates(optimizedTemplates);
 
+  const prepared = prepareTemplate(tree);
+  const textData =  _.uniq(getTextData(prepared));
+
+
   const printedTemplates = Object.values(chosenTemplates)
     .map((t) => `${t.label}: ${t.template}`)
     .join('\n');
@@ -299,5 +305,141 @@ export default function templatize(html: string): string {
   // Apply chosen templates to the tree
   const templatizedTree = serializeTree(tree, chosenTemplates);
 
-  return printedTemplates + '\n\n' + templatizedTree;
+  //return printedTemplates + '\n\n' + templatizedTree;
+  return [JSON.stringify(prepared), JSON.stringify(textData)];
+}
+
+const skipedTags = ["div", "a", "span", "h1", "h2", "img", "svg", "nav", "header", "table", "tr", "td", "section", "article", "body", "heading"]
+
+export function getTextData(node: any[]):  string[] {
+
+  let textArray: string[] = [];
+
+  if (Array.isArray(node[0])) {
+    node.forEach(n => {
+      textArray = textArray.concat(getTextData(n))
+    })
+  } else {
+    node.forEach(n => {
+      if (typeof n == 'string' && !skipedTags.includes(n)) {
+        textArray.push(n);
+      } else if (Array.isArray(n)) {
+        textArray = textArray.concat(getTextData(n))
+      }
+    })
+  } 
+
+  return textArray;
+
+}
+
+const possibleAttrs = ['id', 'aria-label', 'role', 'title', 'type'];
+
+function prepareTemplate(node: JsonNode): any {
+
+
+  if (node.type === 'TEXT') {    
+    let text = node.content.replaceAll("\\n", "").replace(/\s+/g, ' ').trim();
+
+    //temporary reduce big text
+    return text.substring(0, 20);
+
+  }
+
+  if (node.tagName == 'HTML') {
+    return prepareTemplate(node.children[1])
+  }
+
+  if (node.tagName.toLowerCase() == 'SVG') return null;
+
+
+  const elem: any[] = [];
+
+  elem.push(node.tagName.toLowerCase());
+
+  const hasId = node.attributes.id;
+
+  if (hasId) {
+    elem.push(parseInt(node.attributes.id));
+  }
+
+  Object.entries(node.attributes)
+    .forEach(([k, v]) => {
+      if (k != 'id' && possibleAttrs.includes(k)) {
+        elem.push(v);
+      }
+      
+    });
+
+  let children = node.children.map(child => prepareTemplate(child)).filter(el => el != null);
+
+  if (children.length > 0) {
+    if (children.length == 1 && typeof children[0] === 'string') {
+
+      const contained = elem.filter(e => typeof e == 'string').filter(e => e.includes(children[0])).length;
+
+      if (contained == 0) {
+        elem.push(children[0])
+      }
+    } else {
+
+      //flat 'span' inside 'a'
+      if (elem[0] == 'a') {
+        children = children.map(child => {
+          if (Array.isArray(child)) {
+            if (child[0] == 'span' && typeof _.last(child) == 'string') {
+              return _.last(child);
+            }
+            return child;
+          }
+          return child;
+        });
+      }
+
+      //join children if all of them is string
+      // children = children.map(child => {
+      //   if (Array.isArray(child) && child.every(item => typeof item === 'string')) {
+      //     return [...new Set(child)].join(" ");
+      //   } else return child;
+      // })
+
+      if (children.every(item => typeof item === 'string')) {
+        elem.push(children.join(" "));
+      } else {
+        elem.push(children);
+      }
+      
+    }   
+  }
+
+  // if ((elem[0] == 'DIV' || elem[0] == 'SPAN') && elem.length == 2) {
+  //   if ( !Array.isArray(elem[1])) {
+  //     return null;
+  //   }
+  // }
+
+  if (elem.length == 2 && hasId) {
+    return null;
+  }
+
+  // if (elem[0] == 'a') {
+  //   const lastlem = elem[elem.length - 1];
+  //   if (Array.isArray(lastlem) && lastlem[0] == 'span') {
+
+  //   } 
+  // }
+
+
+  if (elem.filter(el=> typeof el == 'string' && el.toLowerCase().includes('footer')).length > 0) return null;
+
+  const uniq = _.uniq(elem);
+
+  if ((uniq[0] == 'div' || uniq[0] == 'span') && uniq.length == 3 && Array.isArray(uniq[2])) {
+    if (Array.isArray(uniq[2]) && uniq[2].length == 1) {
+      return uniq[2][0];
+    } else {
+      return uniq[2];
+    }
+  } else return uniq;
+
 }
